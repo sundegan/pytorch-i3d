@@ -162,7 +162,7 @@ class InceptionModule(nn.Module):
         b3a和b3b：先是一个3*3*3的最大池化操作可以捕获更广泛的特征，随后使用1x1x1的卷积核进行降维。
         Args:
             in_channels: 输入通道数。
-            out_channels: 输出通道数。
+            out_channels: 输出通道数，是一个数组，分别指定多个分支的卷积操作的输出通道数。
             name: 模块名称。
         """
         super().__init__()
@@ -194,21 +194,15 @@ class InceptionModule(nn.Module):
 
 
 class InceptionI3d(nn.Module):
-    """Inception-v1 I3D architecture.
-    The model is introduced in:
-        Quo Vadis, Action Recognition? A New Model and the Kinetics Dataset
-        Joao Carreira, Andrew Zisserman
-        https://arxiv.org/pdf/1705.07750v1.pdf.
-    See also the Inception architecture, introduced in:
-        Going deeper with convolutions
-        Christian Szegedy, Wei Liu, Yangqing Jia, Pierre Sermanet, Scott Reed,
-        Dragomir Anguelov, Dumitru Erhan, Vincent Vanhoucke, Andrew Rabinovich.
-        http://arxiv.org/pdf/1409.4842v1.pdf.
+    """基于Inception-v1的I3D模型。
+    I3D模型结构在《Quo Vadis, Action Recognition? A New Model and the Kinetics Dataset》这篇论文首次提出,
+     https://arxiv.org/pdf/1705.07750v1.pdf。
+    同时也参考了Inception结构，关于Inception模型结构，在论文《Going deeper with convolutions》进行了介绍，
+     https://arxiv.org/pdf/1409.4842v1.pdf。
     """
 
-    # Endpoints of the model in order. During construction, all the endpoints up
-    # to a designated `final_endpoint` are returned in a dictionary as the
-    # second return value.
+    # 模型的所有有效端点按顺序排列。在构造过程中，`final_endpoint`之前的所有端点都作为第二个返回值在字典中返回。
+    # 模型端点的作用是可以选择性构建，根据需要选择模型构建的深度，模型只会构建到指定的`final_endpoint`这一层。
     VALID_ENDPOINTS = (
         'Conv3d_1a_7x7',
         'MaxPool3d_2a_3x3',
@@ -232,27 +226,23 @@ class InceptionI3d(nn.Module):
 
     def __init__(self, num_classes=400, spatial_squeeze=True,
                  final_endpoint='Logits', name='inception_i3d', in_channels=3, dropout_keep_prob=0.5):
-        """Initializes I3D model instance.
+        """初始化I3D模型实例。
         Args:
-          num_classes: The number of outputs in the logit layer (default 400, which
-              matches the Kinetics dataset).
-          spatial_squeeze: Whether to squeeze the spatial dimensions for the logits
-              before returning (default True).
-          final_endpoint: The model contains many possible endpoints.
-              `final_endpoint` specifies the last endpoint for the model to be built
-              up to. In addition to the output at `final_endpoint`, all the outputs
-              at endpoints up to `final_endpoint` will also be returned, in a
-              dictionary. `final_endpoint` must be one of
-              InceptionI3d.VALID_ENDPOINTS (default 'Logits').
-          name: A string (optional). The name of this module.
+          num_classes: logit层的输出数量（默认为400，和Kinetics-400数据集的类别数相匹配）
+          spatial_squeeze: 是否在返回之前压缩logits的空间维度(默认为True)。
+          final_endpoint: 模型有多个可能的端点。`final_endpoint`指定了要构建模型的最后一个端点。
+                            除了`final_endpoint`端点会被返回，在`final_endpoint`之前的所有端点也都会以字典的形式返回。
+                            `final_endpoint`必须是InceptionI3d.VALID_ENDPOINTS中列出的有效值中的一个（默认为'Logits'）。
+          name: 模块名称（可选地）。
         Raises:
-          ValueError: if `final_endpoint` is not recognized.
+            如果`final_endpoint`不能被识别，则会报错。
         """
 
+        # 验证是否为有效端点，初始化实例变量和父类
         if final_endpoint not in self.VALID_ENDPOINTS:
             raise ValueError('Unknown final endpoint %s' % final_endpoint)
 
-        super(InceptionI3d, self).__init__()
+        super().__init__()
         self._num_classes = num_classes
         self._spatial_squeeze = spatial_squeeze
         self._final_endpoint = final_endpoint
@@ -261,30 +251,29 @@ class InceptionI3d(nn.Module):
         if self._final_endpoint not in self.VALID_ENDPOINTS:
             raise ValueError('Unknown final endpoint %s' % self._final_endpoint)
 
+        # 定义并构建网络层结构
         self.end_points = {}
         end_point = 'Conv3d_1a_7x7'
-        self.end_points[end_point] = Unit3D(in_channels=in_channels, output_channels=64, kernel_shape=[7, 7, 7],
+        self.end_points[end_point] = Unit3D(in_channels=in_channels, output_channels=64, kernel_shape=(7, 7, 7),
                                             stride=(2, 2, 2), padding=(3, 3, 3), name=name + end_point)
         if self._final_endpoint == end_point: return
 
         end_point = 'MaxPool3d_2a_3x3'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=[1, 3, 3], stride=(1, 2, 2),
-                                                          padding=0)
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=0)
         if self._final_endpoint == end_point: return
 
         end_point = 'Conv3d_2b_1x1'
-        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=64, kernel_shape=[1, 1, 1], padding=0,
+        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=64, kernel_shape=(1, 1, 1), padding=0,
                                             name=name + end_point)
         if self._final_endpoint == end_point: return
 
         end_point = 'Conv3d_2c_3x3'
-        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=192, kernel_shape=[3, 3, 3], padding=1,
+        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=192, kernel_shape=(3, 3, 3), padding=1,
                                             name=name + end_point)
         if self._final_endpoint == end_point: return
 
         end_point = 'MaxPool3d_3a_3x3'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=[1, 3, 3], stride=(1, 2, 2),
-                                                          padding=0)
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=0)
         if self._final_endpoint == end_point: return
 
         end_point = 'Mixed_3b'
@@ -292,12 +281,11 @@ class InceptionI3d(nn.Module):
         if self._final_endpoint == end_point: return
 
         end_point = 'Mixed_3c'
-        self.end_points[end_point] = InceptionModule(256, [128, 128, 192, 32, 96, 64], name + end_point)
+        self.end_points[end_point] = InceptionModule(64 + 128 + 32 + 32, [128, 128, 192, 32, 96, 64], name + end_point)
         if self._final_endpoint == end_point: return
 
         end_point = 'MaxPool3d_4a_3x3'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=[3, 3, 3], stride=(2, 2, 2),
-                                                          padding=0)
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(3, 3, 3), stride=(2, 2, 2), padding=0)
         if self._final_endpoint == end_point: return
 
         end_point = 'Mixed_4b'
@@ -322,7 +310,7 @@ class InceptionI3d(nn.Module):
         if self._final_endpoint == end_point: return
 
         end_point = 'MaxPool3d_5a_2x2'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=[2, 2, 2], stride=(2, 2, 2),
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(2, 2, 2), stride=(2, 2, 2),
                                                           padding=0)
         if self._final_endpoint == end_point: return
 
@@ -337,44 +325,59 @@ class InceptionI3d(nn.Module):
         if self._final_endpoint == end_point: return
 
         end_point = 'Logits'
-        self.avg_pool = nn.AvgPool3d(kernel_size=[2, 7, 7],
-                                     stride=(1, 1, 1))
+        self.avg_pool = nn.AvgPool3d(kernel_size=(2, 7, 7), stride=(1, 1, 1))
         self.dropout = nn.Dropout(dropout_keep_prob)
         self.logits = Unit3D(in_channels=384 + 384 + 128 + 128, output_channels=self._num_classes,
-                             kernel_shape=[1, 1, 1],
+                             kernel_shape=(1, 1, 1),
                              padding=0,
                              activation_fn=None,
                              use_batch_norm=False,
                              use_bias=True,
                              name='logits')
 
+        # 调用build方法构建网络模型
         self.build()
 
+    # 更改logit层的输出类别数。
     def replace_logits(self, num_classes):
         self._num_classes = num_classes
         self.logits = Unit3D(in_channels=384 + 384 + 128 + 128, output_channels=self._num_classes,
-                             kernel_shape=[1, 1, 1],
+                             kernel_shape=(1, 1, 1),
                              padding=0,
                              activation_fn=None,
                              use_batch_norm=False,
                              use_bias=True,
                              name='logits')
 
+    # 构建网络，将定义的端点添加到模块中。
     def build(self):
         for k in self.end_points.keys():
             self.add_module(k, self.end_points[k])
 
+    # 定义前向传播过程
     def forward(self, x):
         for end_point in self.VALID_ENDPOINTS:
             if end_point in self.end_points:
-                x = self._modules[end_point](x)  # use _modules to work with dataparallel
+                x = self._modules[end_point](x)  # 获取对应端点的模块，并对输入x应用该模块。
 
+        # self.avg_pool(x)：应用全局平均池化。这通常用于减少特征图的维度，为全连接层做准备。
+        # self.dropout(): 应用dropout操作，这有助于防止过拟合。
+        # self.logits(): 将处理后的数据传递到logits层。这是一个全连接层，通常用于生成最终的分类得分。
         x = self.logits(self.dropout(self.avg_pool(x)))
+
+        # 如果进行空间压缩，将移除末尾两个维度为1的维度，使输出的形状更加紧凑。
+        #   比如x的形状是 [batch_size, time, classes, 1, 1]，
+        #   经过第一个squeeze(3)之后，x的形状会变为[batch_size, time, classes, 1]，
+        #   第二个squeeze(3)将再次尝试移除现在的第4维other，最终输出形状为[batch_size, time, num_classes]。
+        # 如果不应用空间压缩，最后两个维度将保留为单元素维度，形状将是[batch_size, time, num_classes, 1, 1]。
         if self._spatial_squeeze:
             logits = x.squeeze(3).squeeze(3)
-        # logits is batch X time X classes, which is what we want to work with
+
+        # logits的最终形状为[batch_size, time, classes]。这表示对于每个样本在每个时间点上都有一个类别得分。
         return logits
 
+    # 从输入数据x中提取特征。这个方法用于获取模型中间层的输出，而不仅仅是最终的分类层（logits层）的输出。
+    # 这可以将特征用于多种下游任务，比如特征可视化、进一步的特征处理或在其他任务中使用这些特征。
     def extract_features(self, x):
         for end_point in self.VALID_ENDPOINTS:
             if end_point in self.end_points:
@@ -385,6 +388,12 @@ class InceptionI3d(nn.Module):
 if __name__ == '__main__':
     # 测试InceptionModule模块和预期是否相符
     inception = InceptionModule(3, [1, 2, 3, 4, 5, 6], 'test')
-    x = torch.rand(1, 3, 1, 64, 64)  # batch=1, channels=3, t=1, h=64, w=64
-    out = inception(x)
-    print(out.shape)  # torch.Size([1, 15, 1, 64, 64]), 1+3+5+6=15
+    x1 = torch.rand(1, 3, 1, 64, 64)  # batch=1, channels=3, t=1, h=64, w=64
+    y1 = inception(x1)
+    print("y1.shape: ", y1.shape)  # torch.Size([1, 15, 1, 64, 64]), 1+3+5+6=15
+
+    # 测试InceptionI3d模型
+    i3d_model = InceptionI3d()
+    x2 = torch.rand(1, 3, 64, 256, 256)
+    y2 = i3d_model(x2)
+    print("y2.shape: ", y2.shape)  # torch.Size([1, 400, 7, 2, 2])
