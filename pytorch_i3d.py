@@ -152,7 +152,7 @@ class InceptionModule(nn.Module):
     papers：https://arxiv.org/abs/1409.4842
     """
 
-    def __init__(self, in_channels, out_channels, name):
+    def __init__(self, in_channels, out_channels_list, name):
         """
         在该构造函数中，定义了四个分支：Branch_0、Branch_1、Branch_2、Branch_3，
         分别使用不同大小的卷积核同时捕获输入数据在不同尺度上的特征，每个分支输出的特征图数量由out_channels数组指定。
@@ -162,24 +162,29 @@ class InceptionModule(nn.Module):
         b3a和b3b：先是一个3*3*3的最大池化操作可以捕获更广泛的特征，随后使用1x1x1的卷积核进行降维。
         Args:
             in_channels: 输入通道数。
-            out_channels: 输出通道数，是一个数组，分别指定多个分支的卷积操作的输出通道数。
+            out_channels_list: 输出通道数，是一个数组，分别指定多个分支的卷积操作的输出通道数。
             name: 模块名称。
         """
         super().__init__()
 
-        self.b0 = Unit3D(in_channels=in_channels, output_channels=out_channels[0], kernel_shape=(1, 1, 1), padding=0,
+        # 分支0
+        self.b0 = Unit3D(in_channels=in_channels, output_channels=out_channels_list[0], kernel_shape=(1, 1, 1),
                          name=name + '/Branch_0/Conv3d_0a_1x1')
-        self.b1a = Unit3D(in_channels=in_channels, output_channels=out_channels[1], kernel_shape=(1, 1, 1), padding=0,
+        # 分支1
+        self.b1a = Unit3D(in_channels=in_channels, output_channels=out_channels_list[1], kernel_shape=(1, 1, 1),
                           name=name + '/Branch_1/Conv3d_0a_1x1')
-        self.b1b = Unit3D(in_channels=out_channels[1], output_channels=out_channels[2], kernel_shape=(3, 3, 3),
+        self.b1b = Unit3D(in_channels=out_channels_list[1], output_channels=out_channels_list[2],
+                          kernel_shape=(3, 3, 3),
                           name=name + '/Branch_1/Conv3d_0b_3x3')
-        self.b2a = Unit3D(in_channels=in_channels, output_channels=out_channels[3], kernel_shape=(1, 1, 1), padding=0,
+        # 分支2
+        self.b2a = Unit3D(in_channels=in_channels, output_channels=out_channels_list[3], kernel_shape=(1, 1, 1),
                           name=name + '/Branch_2/Conv3d_0a_1x1')
-        self.b2b = Unit3D(in_channels=out_channels[3], output_channels=out_channels[4], kernel_shape=(3, 3, 3),
+        self.b2b = Unit3D(in_channels=out_channels_list[3], output_channels=out_channels_list[4],
+                          kernel_shape=(3, 3, 3),
                           name=name + '/Branch_2/Conv3d_0b_3x3')
-        self.b3a = MaxPool3dSamePadding(kernel_size=(3, 3, 3),
-                                        stride=(1, 1, 1), padding=0)
-        self.b3b = Unit3D(in_channels=in_channels, output_channels=out_channels[5], kernel_shape=(1, 1, 1), padding=0,
+        # 分支3
+        self.b3a = MaxPool3dSamePadding(kernel_size=(3, 3, 3), stride=(1, 1, 1))
+        self.b3b = Unit3D(in_channels=in_channels, output_channels=out_channels_list[5], kernel_shape=(1, 1, 1),
                           name=name + '/Branch_3/Conv3d_0b_1x1')
         self.name = name
 
@@ -221,6 +226,7 @@ class InceptionI3d(nn.Module):
         'Mixed_5b',
         'Mixed_5c',
         'Logits',
+        'AVGLogits',  # 新增的end_point，用来对time维度进行平均
         'Predictions',
     )
 
@@ -246,7 +252,6 @@ class InceptionI3d(nn.Module):
         self._num_classes = num_classes
         self._spatial_squeeze = spatial_squeeze
         self._final_endpoint = final_endpoint
-        self.logits = None
 
         if self._final_endpoint not in self.VALID_ENDPOINTS:
             raise ValueError('Unknown final endpoint %s' % self._final_endpoint)
@@ -255,87 +260,116 @@ class InceptionI3d(nn.Module):
         self.end_points = {}
         end_point = 'Conv3d_1a_7x7'
         self.end_points[end_point] = Unit3D(in_channels=in_channels, output_channels=64, kernel_shape=(7, 7, 7),
-                                            stride=(2, 2, 2), padding=(3, 3, 3), name=name + end_point)
-        if self._final_endpoint == end_point: return
+                                            stride=(2, 2, 2), name=name + end_point)
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'MaxPool3d_2a_3x3'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=0)
-        if self._final_endpoint == end_point: return
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(1, 3, 3), stride=(1, 2, 2))
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Conv3d_2b_1x1'
-        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=64, kernel_shape=(1, 1, 1), padding=0,
+        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=64, kernel_shape=(1, 1, 1),
                                             name=name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Conv3d_2c_3x3'
-        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=192, kernel_shape=(3, 3, 3), padding=1,
+        self.end_points[end_point] = Unit3D(in_channels=64, output_channels=192, kernel_shape=(3, 3, 3),
                                             name=name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'MaxPool3d_3a_3x3'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=0)
-        if self._final_endpoint == end_point: return
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(1, 3, 3), stride=(1, 2, 2))
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_3b'
         self.end_points[end_point] = InceptionModule(192, [64, 96, 128, 16, 32, 32], name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_3c'
         self.end_points[end_point] = InceptionModule(64 + 128 + 32 + 32, [128, 128, 192, 32, 96, 64], name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'MaxPool3d_4a_3x3'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(3, 3, 3), stride=(2, 2, 2), padding=0)
-        if self._final_endpoint == end_point: return
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(3, 3, 3), stride=(2, 2, 2))
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_4b'
         self.end_points[end_point] = InceptionModule(128 + 192 + 96 + 64, [192, 96, 208, 16, 48, 64], name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_4c'
         self.end_points[end_point] = InceptionModule(192 + 208 + 48 + 64, [160, 112, 224, 24, 64, 64], name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_4d'
         self.end_points[end_point] = InceptionModule(160 + 224 + 64 + 64, [128, 128, 256, 24, 64, 64], name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_4e'
         self.end_points[end_point] = InceptionModule(128 + 256 + 64 + 64, [112, 144, 288, 32, 64, 64], name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_4f'
         self.end_points[end_point] = InceptionModule(112 + 288 + 64 + 64, [256, 160, 320, 32, 128, 128],
                                                      name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'MaxPool3d_5a_2x2'
-        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(2, 2, 2), stride=(2, 2, 2),
-                                                          padding=0)
-        if self._final_endpoint == end_point: return
+        self.end_points[end_point] = MaxPool3dSamePadding(kernel_size=(2, 2, 2), stride=(2, 2, 2))
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_5b'
         self.end_points[end_point] = InceptionModule(256 + 320 + 128 + 128, [256, 160, 320, 32, 128, 128],
                                                      name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Mixed_5c'
         self.end_points[end_point] = InceptionModule(256 + 320 + 128 + 128, [384, 192, 384, 48, 128, 128],
                                                      name + end_point)
-        if self._final_endpoint == end_point: return
+        if self._final_endpoint == end_point:
+            self.build()
+            return
 
         end_point = 'Logits'
         self.avg_pool = nn.AvgPool3d(kernel_size=(2, 7, 7), stride=(1, 1, 1))
         self.dropout = nn.Dropout(dropout_keep_prob)
         self.logits = Unit3D(in_channels=384 + 384 + 128 + 128, output_channels=self._num_classes,
                              kernel_shape=(1, 1, 1),
-                             padding=0,
                              activation_fn=None,
                              use_batch_norm=False,
                              use_bias=True,
                              name='logits')
 
-        # 调用build方法构建网络模型
         self.build()
 
     # 更改logit层的输出类别数。
@@ -356,25 +390,48 @@ class InceptionI3d(nn.Module):
 
     # 定义前向传播过程
     def forward(self, x):
+        """
+        Args:
+            x: 输入数据必须是[batch_size, num_channels, num_frames, 224, 224]形状的。
+        """
+
+        # 保存每个端点的输出
+        end_points = {}
         for end_point in self.VALID_ENDPOINTS:
             if end_point in self.end_points:
                 x = self._modules[end_point](x)  # 获取对应端点的模块，并对输入x应用该模块。
+                end_points[end_point] = x  # 保存每一层的输出
+                if self._final_endpoint == end_point:  # 返回当前层的输出和所有收集到的端点输出
+                    return x, end_points
 
+        end_point = 'Logits'
         # self.avg_pool(x)：应用全局平均池化。这通常用于减少特征图的维度，为全连接层做准备。
         # self.dropout(): 应用dropout操作，这有助于防止过拟合。
         # self.logits(): 将处理后的数据传递到logits层。这是一个全连接层，通常用于生成最终的分类得分。
         x = self.logits(self.dropout(self.avg_pool(x)))
 
         # 如果进行空间压缩，将移除末尾两个维度为1的维度，使输出的形状更加紧凑。
-        #   比如x的形状是 [batch_size, time, classes, 1, 1]，
-        #   经过第一个squeeze(3)之后，x的形状会变为[batch_size, time, classes, 1]，
-        #   第二个squeeze(3)将再次尝试移除现在的第4维other，最终输出形状为[batch_size, time, num_classes]。
-        # 如果不应用空间压缩，最后两个维度将保留为单元素维度，形状将是[batch_size, time, num_classes, 1, 1]。
-        if self._spatial_squeeze:
-            logits = x.squeeze(3).squeeze(3)
+        #   比如x的形状是 [batch_size, classes, time, 1, 1]，
+        #   经过第一个squeeze(3)之后，x的形状会变为[batch_size,classes, time, 1]，
+        #   第二个squeeze(3)将再次尝试移除现在的第4维other，最终输出形状为[batch_size, num_classes, time]。
+        # 如果不应用空间压缩，最后两个维度将保留为单元素维度，形状将是[batch_size, num_classes, time, 1, 1]。
+        logits = x.squeeze(3).squeeze(3) if self._spatial_squeeze else x
+        end_points[end_point] = logits
+        if self._final_endpoint == end_point:
+            return logits, end_points
 
-        # logits的最终形状为[batch_size, time, classes]。这表示对于每个样本在每个时间点上都有一个类别得分。
-        return logits
+        # 针对num_frames维度进行平均，最终输出形状变为[batch_size, classes]
+        end_point = 'AVGLogits'
+        averaged_logits = torch.mean(logits, dim=2)
+        end_points[end_point] = averaged_logits
+        if self._final_endpoint == end_point:
+            return averaged_logits, end_points
+
+        # 对classes维度进行softmax预测概率
+        end_point = 'Predictions'
+        predictions = torch.softmax(averaged_logits, dim=1)
+        end_points[end_point] = predictions
+        return predictions, end_points
 
     # 从输入数据x中提取特征。这个方法用于获取模型中间层的输出，而不仅仅是最终的分类层（logits层）的输出。
     # 这可以将特征用于多种下游任务，比如特征可视化、进一步的特征处理或在其他任务中使用这些特征。
@@ -393,7 +450,23 @@ if __name__ == '__main__':
     print("y1.shape: ", y1.shape)  # torch.Size([1, 15, 1, 64, 64]), 1+3+5+6=15
 
     # 测试InceptionI3d模型
-    i3d_model = InceptionI3d()
-    x2 = torch.rand(1, 3, 64, 256, 256)
-    y2 = i3d_model(x2)
-    print("y2.shape: ", y2.shape)  # torch.Size([1, 400, 7, 2, 2])
+    i3d_model_1 = InceptionI3d(spatial_squeeze=False)
+    x2 = torch.rand(1, 3, 64, 224, 224)
+    y2, end_points = i3d_model_1(x2)
+    print("y2.shape: ", y2.shape)  # torch.Size([1, 400, 7, 1, 1])
+
+    i3d_model_2 = InceptionI3d()
+    x3 = torch.rand(1, 3, 64, 224, 224)
+    y3, _ = i3d_model_2(x3)
+    print("y3.shape: ", y3.shape)  # torch.Size([1, 400, 7])
+
+    i3d_model_3 = InceptionI3d(final_endpoint='AVGLogits')
+    x4 = torch.rand(1, 3, 64, 224, 224)
+    y4, _ = i3d_model_3(x4)
+    print("y4.shape: ", y4.shape)  # torch.Size([1, 400])
+
+    i3d_model_4 = InceptionI3d(final_endpoint='Predictions')
+    x5 = torch.rand(1, 3, 64, 224, 224)
+    y5, _ = i3d_model_4(x5)
+    print("y5.shape: ", y5.shape)  # torch.Size([1, 400])
+    print("y5: ", y5)
