@@ -395,6 +395,10 @@ class InceptionI3d(nn.Module):
             x: 输入数据必须是[batch_size, num_channels, num_frames, 224, 224]形状的。
         """
 
+        # 检查输入数据的尺寸是否符合要求，num_frames最少为9，否则会在卷积过程中因为数据尺寸小于卷积核大小而报错
+        if x.size(2) <= 8 or x.size(3) < 224 or x.size(4) < 224:
+            raise ValueError("输入尺寸需要至少为 [batch, channels, 9, 224, 224]")
+
         # 保存每个端点的输出
         end_points = {}
         for end_point in self.VALID_ENDPOINTS:
@@ -440,33 +444,3 @@ class InceptionI3d(nn.Module):
             if end_point in self.end_points:
                 x = self._modules[end_point](x)
         return self.avg_pool(x)
-
-
-if __name__ == '__main__':
-    # 测试InceptionModule模块和预期是否相符
-    inception = InceptionModule(3, [1, 2, 3, 4, 5, 6], 'test')
-    x1 = torch.rand(1, 3, 1, 64, 64)  # batch=1, channels=3, t=1, h=64, w=64
-    y1 = inception(x1)
-    print("y1.shape: ", y1.shape)  # torch.Size([1, 15, 1, 64, 64]), 1+3+5+6=15
-
-    # 测试InceptionI3d模型
-    i3d_model_1 = InceptionI3d(spatial_squeeze=False)
-    x2 = torch.rand(1, 3, 64, 224, 224)
-    y2, end_points = i3d_model_1(x2)
-    print("y2.shape: ", y2.shape)  # torch.Size([1, 400, 7, 1, 1])
-
-    i3d_model_2 = InceptionI3d()
-    x3 = torch.rand(1, 3, 64, 224, 224)
-    y3, _ = i3d_model_2(x3)
-    print("y3.shape: ", y3.shape)  # torch.Size([1, 400, 7])
-
-    i3d_model_3 = InceptionI3d(final_endpoint='AVGLogits')
-    x4 = torch.rand(1, 3, 64, 224, 224)
-    y4, _ = i3d_model_3(x4)
-    print("y4.shape: ", y4.shape)  # torch.Size([1, 400])
-
-    i3d_model_4 = InceptionI3d(final_endpoint='Predictions')
-    x5 = torch.rand(1, 3, 64, 224, 224)
-    y5, _ = i3d_model_4(x5)
-    print("y5.shape: ", y5.shape)  # torch.Size([1, 400])
-    print("y5: ", y5)
