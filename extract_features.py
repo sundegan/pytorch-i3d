@@ -1,14 +1,16 @@
+"""使用I3D模型来处理视频数据，并将提取的特征保存为NumPy数组，这些特征可以用于后续的机器学习或深度学习任务。"""
+
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
 import sys
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-mode', type=str, help='rgb or flow')
-parser.add_argument('-load_model', type=str)
-parser.add_argument('-root', type=str)
-parser.add_argument('-gpu', type=str)
-parser.add_argument('-save_dir', type=str)
+parser.add_argument('-mode', type=str, help='rgb or flow')  # 模式
+parser.add_argument('-load_model', type=str)  # 模型路径
+parser.add_argument('-root', type=str)  # 数据根目录
+parser.add_argument('-gpu', type=str)  # 使用的GPU
+parser.add_argument('-save_dir', type=str)  # 保存目录
 
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
@@ -27,12 +29,26 @@ import videotransforms
 
 import numpy as np
 
-from pytorch_i3d import InceptionI3d
+from pytorch_i3d_model import InceptionI3d
 
 from charades_dataset_full import Charades as Dataset
 
 
 def run(max_steps=64e3, mode='rgb', root='/ssd2/charades/Charades_v1_rgb', split='charades/charades.json', batch_size=1, load_model='', save_dir=''):
+    """
+    特征提取的主要函数。
+    Args:
+        max_steps:
+        mode:
+        root:
+        split:
+        batch_size:
+        load_model:
+        save_dir:
+
+    Returns:
+
+    """
     # setup dataset
     test_transforms = transforms.Compose([videotransforms.CenterCrop(224)])
 

@@ -3,7 +3,7 @@
 import torch
 import unittest
 
-import pytorch_i3d as i3d
+import pytorch_i3d_model as i3d
 
 _IMAGE_SIZE = 224
 _NUM_CLASSES = 400
