@@ -1,0 +1,1 @@
+因为文件较大(75G)，这里不提供数据，请自行前往官网进行数据集下载，Charades数据集下载地址：https://prior.allenai.org/projects/charades

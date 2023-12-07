@@ -1,16 +1,12 @@
-import torch
-import torch.utils.data
-from torch.utils.data.dataloader import default_collate
-
-import numpy as np
 import json
-import csv
-import h5py
-import random
 import os
 import os.path
+import random
 
 import cv2
+import numpy as np
+import torch
+import torch.utils.data
 
 
 def video_to_tensor(pic):
@@ -48,7 +44,7 @@ def load_rgb_frames(image_dir, vid, start, num):
             img = cv2.resize(img, dsize=(0, 0), fx=sc, fy=sc)  # 使用cv2.resize通过计算出的缩放因子sc对图像进行缩放。
         img = (img / 255.) * 2 - 1  # 将图像像素值从[0, 255]范围标准化到[-1, 1]。这是一种常见的图像预处理步骤，有助于改进模型的性能。
         frames.append(img)
-    return np.asarray(frames, dtype=np.float32)  # 将帧列表转换为numpy数组，指定数据类型为 float32
+    return np.asarray(frames, dtype=np.float32)  # 将帧列表转换为numpy数组，指定数据类型为float32
 
 
 def load_flow_frames(image_dir, vid, start, num):
@@ -79,7 +75,7 @@ def load_flow_frames(image_dir, vid, start, num):
     return np.asarray(frames, dtype=np.float32)
 
 
-def make_dataset(split_file, split, root, mode, num_classes=157):
+def make_dataset(split_file='data/charades/charades.json', split='train', root='data/charades/Charades_v1_rgb', mode='rgb', num_classes=157):
     """
     make_dataset函数负责从给定的文件和目录中读取视频信息和帧，创建包含视频ID、标签、持续时间和帧数的数据集。
     Args:
@@ -135,7 +131,7 @@ def make_dataset(split_file, split, root, mode, num_classes=157):
         if num_frames < 66:
             continue
 
-        # 初始化一个标签数组，形状为 (类别数, 帧数)，用于存储每个帧的类别标签。
+        # 初始化一个标签数组，形状为 (类别数, 帧数)，用于存储每帧的类别标签。
         label = np.zeros((num_classes, num_frames), np.float32)
 
         # 计算视频的帧率（每秒帧数）。
@@ -158,9 +154,14 @@ def make_dataset(split_file, split, root, mode, num_classes=157):
 class Charades(torch.utils.data.Dataset):
     """
     自定义的PyTorch数据集类，用于处理和加载Charades数据集。
+    Args:
+        split_file: 包含视频数据集分割信息的JSON文件的路径。这个文件定义了哪些视频属于训练集、验证集或测试集。
+        split: 指定要创建的数据集类型（例如 'training', 'validation', 'test'）。
+        root: 视频帧或光流帧的根目录。
+        mode: 指定数据集的模式，比如 'rgb' 或 'flow'，这决定了加载的帧类型。
+        transforms: 应用的预处理程序。
     """
     def __init__(self, split_file, split, root, mode, transforms=None):
-
         self.data = make_dataset(split_file, split, root, mode)
         self.split_file = split_file
         self.transforms = transforms
@@ -168,13 +169,6 @@ class Charades(torch.utils.data.Dataset):
         self.root = root
 
     def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (image, target) where target is class_index of the target class.
-        """
         # 从self.data（在初始化时创建的数据集）中获取相应的视频信息和标签。
         vid, label, duration, num_frames = self.data[index]
         # 用于随机选择一个起始帧start_f来加载一系列连续的视频帧。

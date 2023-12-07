@@ -11,14 +11,14 @@ _SAMPLE_VIDEO_FRAMES = 79
 _NUM_CLASSES = 400
 
 _SAMPLE_PATHS = {
-    'rgb': 'data/v_CricketShot_g04_c01_rgb.npy',
-    'flow': 'data/v_CricketShot_g04_c01_flow.npy',
+    'rgb': 'data/sample/v_CricketShot_g04_c01_rgb.npy',
+    'flow': 'data/sample/v_CricketShot_g04_c01_flow.npy',
 }
 _CHECKPOINT_PATHS = {
-    'rgb': 'models/rgb_imagenet.pt',
-    'flow': 'models/flow_imagenet.pt',
+    'rgb': 'checkpoints/rgb_imagenet.pt',
+    'flow': 'checkpoints/flow_imagenet.pt',
 }
-_LABEL_MAP_PATH = 'data/label_map.txt'
+_LABEL_MAP_PATH = 'data/sample/label_map.txt'
 
 
 # 加载标签映射
